@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Family Calendar">
+<title>Bowden Family Calendar</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.9/babel.min.js"></script>
+</head>
+<body style="margin:0;background:linear-gradient(145deg,#FFF8F0 0%,#F5EFFF 50%,#EAF6FF 100%)">
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useMemo,useEffect}=React;
+
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVi-thiMEoe25oyCYGkj5r0rLwiqc6NcV_qP5YqNHvfv9HtzkKSujt2zhfz1G1sP23dQNCP8ib0D-9/pub?gid=0&single=true&output=csv";
+const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbz3jvzogD4GzDo2gdsV0VRYzKYGfBtIsQgP2hIW_MwLwKuR-K_AFrrU8NowV8vh2gd5mQ/exec";
+
+const KIDS = {
+  evelyn: { name: "Evelyn", emoji: "🦋", color: "#E86F51", lightColor: "#FDEAE5" },
+  violet: { name: "Violet", emoji: "🌸", color: "#7C5CBF", lightColor: "#F0EBF8" },
+};
+const MN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DN = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const dk = (y,m,d) => `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+
+const VW = {
+  1:{title:"K-Math Monday",desc:"Math enrichment",loc:"Kido — Experimenters",det:"Hands-on math: shapes, counting, number recognition.",t:"Ms. Chiann / Ms. Dinara"},
+  2:{title:"Explorer Day",desc:"Science & discovery",loc:"Kido River Place",det:"Investigating science through hands-on discovery.",t:"Ms. Chiann / Ms. Dinara"},
+  3:{title:"K-Math Wednesday",desc:"Number matching & patterns",loc:"Kido — Experimenters",det:"Number matching & pattern recognition.",t:"Ms. Chiann / Ms. Dinara"},
+  4:{title:"Explorer Day",desc:"Science & discovery",loc:"Kido River Place",det:"Investigating science through hands-on discovery.",t:"Ms. Chiann / Ms. Dinara"},
+  5:{title:"Fun Friday",desc:"Celebrations & wrap-up",loc:"Kido River Place",det:"End-of-week celebrations.",t:"Ms. Chiann / Ms. Dinara"},
+};
+const EW = {
+  1:{title:"Makerspace Monday",desc:"Building & projects",loc:"Kido — Innovators",det:"Building, crafting, creative projects.",t:"Ms. Rebecca Russell"},
+  2:{title:"Teamwork Tuesday",desc:"Collaborative activities",loc:"Kido — Innovators",det:"Teamwork and group challenges.",t:"Ms. Rebecca Russell"},
+  3:{title:"Cooking & Exploration",desc:"Cooking & outdoor fun",loc:"Kido — Innovators",det:"Cooking projects + outdoor exploration.",t:"Ms. Rebecca Russell"},
+  4:{title:"Tinkering Thursday",desc:"Creative problem solving",loc:"Kido — Innovators",det:"Taking things apart, building new creations.",t:"Ms. Rebecca Russell"},
+  5:{title:"Free Choice Friday",desc:"Choose your activities",loc:"Kido — Innovators",det:"Art, games, outdoor play.",t:"Ms. Rebecca Russell"},
+};
+
+const SE = {
+  [dk(2026,2,2)]:[{title:"💯 100th Day!",time:"All Day",kid:"evelyn",type:"school",desc:"Dress as 100 yrs old or 100-item shirt!",action:"👗 100-item outfit!",loc:"RPE",t:"Ms. Jevnikar",dress:true}],
+  [dk(2026,2,4)]:[{title:"🚒 Fire & Rescue Assembly",time:"During school",kid:"evelyn",type:"school",desc:"Lake Travis Fire & Rescue",loc:"RPE — MPR"}],
+  [dk(2026,2,11)]:[{title:"💌 Valentines Exchange",time:"End of day",kid:"evelyn",type:"school",desc:"No candy! 19 students.",action:"💌 Bring 19 valentines. NO candy!",loc:"RPE",t:"Ms. Jevnikar",prep:"Prepare 19 valentines"}],
+  [dk(2026,2,12)]:[{title:"🚫 No School",time:"All Day",kid:"evelyn",type:"holiday",desc:"Leander ISD closed"}],
+  [dk(2026,2,13)]:[{title:"🚫 No School",time:"All Day",kid:"evelyn",type:"holiday",desc:"Leander ISD closed"}],
+  [dk(2026,2,17)]:[{title:"💛 Kindness Week!",time:"All Week",kid:"evelyn",type:"school",desc:"Dress-up days!",action:"👗 Check themes!",loc:"RPE",dress:true},{title:"🥫 Food Drive",time:"Through 2/25",kid:"evelyn",type:"school",desc:"Hope Austin",action:"🥫 Mac & cheese or yogurts",prep:"Pack food drive items"}],
+  [dk(2026,2,20)]:[{title:"🎉 Pajama Day!",time:"All Day",kid:"violet",type:"event",desc:"Wear PJs to Kido!",action:"👗 Pajamas!",dress:true,prep:"Pick out pajamas for Violet"},{title:"🎉 Pajama Day!",time:"All Day",kid:"evelyn",type:"event",desc:"PJ Day at Kido!",action:"👗 Pajamas!",dress:true,prep:"Pick out pajamas for Evelyn"}],
+  [dk(2026,2,23)]:[{title:"📚 Author Visit",time:"During school",kid:"evelyn",type:"school",desc:"Alyson Gerber — Bluebonnet Award",loc:"RPE"},{title:"🏃 PACER Test",time:"PE",kid:"evelyn",type:"school",desc:"Running shoes!",action:"👟 Running shoes!",loc:"RPE — Gym",t:"Coach Warner",prep:"Running shoes for PACER (Tue & Wed)"}],
+  [dk(2026,2,24)]:[{title:"🏃 PACER Day 2",time:"PE",kid:"evelyn",type:"school",desc:"Running shoes!",action:"👟 Running shoes!",loc:"RPE — Gym",t:"Coach Warner"}],
+  [dk(2026,2,25)]:[{title:"🥫 Food Drive Last Day",time:"",kid:"evelyn",type:"school",desc:"Last chance!",action:"🥫 Last day!",loc:"RPE"}],
+  [dk(2026,3,2)]:[{title:"📚 Read Across America!",time:"All Week",kid:"evelyn",type:"school",desc:"Reading celebrations!",loc:"RPE"},{title:"🎩 Silly Hat/Stripes",time:"All Day",kid:"evelyn",type:"school",desc:"Wear silly hat or stripes!",action:"👗 Silly hat/stripes!",loc:"RPE",dress:true,prep:"Silly hat or stripes"}],
+  [dk(2026,3,3)]:[{title:"🔴🔵 Red & Blue Day",time:"All Day",kid:"evelyn",type:"school",desc:"Wear red & blue!",action:"👗 Red and blue!",loc:"RPE",dress:true,prep:"Red and blue outfit"},{title:"🌈 Holi Prep!",time:"",kid:"violet",type:"event",desc:"White shirt tomorrow!",action:"👕 Pack WHITE shirt!",prep:"White t-shirt for Violet — Holi tomorrow!"},{title:"🌈 Holi Prep!",time:"",kid:"evelyn",type:"event",desc:"White shirt tomorrow!",action:"👕 Pack WHITE shirt!",prep:"White t-shirt for Evelyn — Holi tomorrow!"}],
+  [dk(2026,3,4)]:[{title:"🤪 Wacky Hair Day",time:"All Day",kid:"evelyn",type:"school",desc:"Wacky hair!",action:"💇 Wacky hair!",loc:"RPE",dress:true,prep:"Plan wacky hairstyle"},{title:"🌈 Holi!",time:"All Day",kid:"violet",type:"event",desc:"Color festival!",action:"👕 WHITE shirt!",loc:"Kido — Outdoors",dress:true},{title:"🌈 Holi Afterschool",time:"4:00 PM",kid:"evelyn",type:"event",desc:"Afterschool Holi!",action:"👕 WHITE shirt",loc:"Kido",dress:true}],
+  [dk(2026,3,5)]:[{title:"🧦 Silly Socks Day",time:"All Day",kid:"evelyn",type:"school",desc:"Silly socks!",action:"🧦 Silly socks!",loc:"RPE",dress:true,prep:"Pick silly socks"},{title:"🐔 Spirit Night CFA",time:"Evening",kid:"evelyn",type:"school",desc:"Chick-fil-A!",action:"🍗 Eat at CFA!",loc:"Chick-fil-A Four Points"}],
+  [dk(2026,3,6)]:[{title:"💚 Wear Green",time:"All Day",kid:"evelyn",type:"school",desc:"Wear green!",action:"👗 Green!",loc:"RPE",dress:true,prep:"Green outfit"},{title:"📖 Book Fair",time:"TBA",kid:"both",type:"event",desc:"Scholastic Book Fair at Kido!",loc:"Kido"},{title:"🎊 Spring Fling",time:"TBA",kid:"both",type:"event",desc:"Spring Fling!",loc:"Kido"}],
+  [dk(2026,3,11)]:[{title:"🌱 Spring Planting",time:"During school",kid:"evelyn",type:"school",desc:"School garden!",loc:"RPE — Garden"},{title:"🍋 Lemonade Stand",time:"Recess",kid:"evelyn",type:"school",desc:"Lemonade at recess!",loc:"RPE"}],
+  [dk(2026,3,13)]:[{title:"🤠 Rodeo Day!",time:"All Day",kid:"evelyn",type:"school",desc:"Western attire!",action:"🤠 Cowboy boots & hat!",loc:"RPE",dress:true,prep:"Western attire for Evelyn"}],
+  [dk(2026,3,23)]:[{title:"🚫 Staff Dev Day",time:"All Day",kid:"evelyn",type:"holiday",desc:"No school"}],
+  [dk(2026,3,27)]:[{title:"📸 Spring Pictures!",time:"During school",kid:"evelyn",type:"school",desc:"Picture day!",action:"📸 Dress nice!",loc:"RPE",dress:true,prep:"Nice outfit for pictures"},{title:"📋 Report Cards",time:"",kid:"evelyn",type:"school",desc:"Report cards go home",loc:"RPE"}],
+  [dk(2026,3,30)]:[{title:"👩‍🚒 Career Day",time:"During school",kid:"evelyn",type:"school",desc:"Career Day at RPE",loc:"RPE"}],
+  [dk(2026,3,31)]:[{title:"👩‍🚒 Career Day 2",time:"During school",kid:"evelyn",type:"school",desc:"Career Day continues",loc:"RPE"},{title:"🔬 STEAM Night!",time:"5:30–7:30 PM",kid:"evelyn",type:"school",desc:"Free STEAM Night!",action:"🔬 5:30-7:30 PM!",loc:"RPE"}],
+};
+
+const HOL = {
+  [dk(2025,9,1)]:"Labor Day",[dk(2025,10,16)]:"Holiday",[dk(2025,10,17)]:"Holiday",
+  [dk(2025,11,24)]:"Fall Break",[dk(2025,11,25)]:"Fall Break",[dk(2025,11,26)]:"Fall Break",[dk(2025,11,27)]:"Thanksgiving",[dk(2025,11,28)]:"Fall Break",
+  [dk(2025,12,22)]:"Winter Break",[dk(2025,12,23)]:"Winter Break",[dk(2025,12,24)]:"Christmas Eve",[dk(2025,12,25)]:"Christmas",[dk(2025,12,26)]:"Winter Break",[dk(2025,12,29)]:"Winter Break",[dk(2025,12,30)]:"Winter Break",[dk(2025,12,31)]:"New Year's Eve",
+  [dk(2026,1,1)]:"New Year's Day",[dk(2026,1,2)]:"Winter Break",[dk(2026,1,19)]:"MLK Day",
+  [dk(2026,3,16)]:"Spring Break",[dk(2026,3,17)]:"Spring Break",[dk(2026,3,18)]:"Spring Break",[dk(2026,3,19)]:"Spring Break",[dk(2026,3,20)]:"Spring Break",
+  [dk(2026,5,25)]:"Memorial Day",[dk(2026,5,29)]:"Last Day",
+  [dk(2026,8,12)]:"First Day 26-27",[dk(2026,9,7)]:"Labor Day",
+  [dk(2026,10,12)]:"Break",[dk(2026,10,13)]:"Break",
+  [dk(2026,11,23)]:"Thanksgiving",[dk(2026,11,24)]:"Thanksgiving",[dk(2026,11,25)]:"Thanksgiving",[dk(2026,11,26)]:"Thanksgiving",[dk(2026,11,27)]:"Thanksgiving",
+  [dk(2026,12,21)]:"Winter Break",[dk(2026,12,22)]:"Winter Break",[dk(2026,12,23)]:"Winter Break",[dk(2026,12,24)]:"Christmas Eve",[dk(2026,12,25)]:"Christmas",[dk(2026,12,28)]:"Winter Break",[dk(2026,12,29)]:"Winter Break",[dk(2026,12,30)]:"Winter Break",[dk(2026,12,31)]:"New Year's Eve",
+  [dk(2027,1,1)]:"New Year's Day",[dk(2027,1,18)]:"MLK Day",
+  [dk(2027,2,15)]:"Break",[dk(2027,2,16)]:"Break",
+  [dk(2027,3,15)]:"Spring Break",[dk(2027,3,16)]:"Spring Break",[dk(2027,3,17)]:"Spring Break",[dk(2027,3,18)]:"Spring Break",[dk(2027,3,19)]:"Spring Break",[dk(2027,3,26)]:"Holiday",
+  [dk(2027,5,27)]:"Last Day",
+};
+const SDV = {[dk(2025,9,22)]:"Staff Dev",[dk(2025,10,20)]:"Staff Dev",[dk(2025,11,3)]:"Staff Dev",[dk(2025,11,4)]:"Staff Dev",[dk(2026,1,5)]:"Staff Dev",[dk(2026,2,16)]:"Staff Dev",[dk(2026,3,23)]:"Staff Dev",[dk(2026,9,21)]:"Staff Dev",[dk(2026,10,9)]:"PT Conf",[dk(2026,11,2)]:"Staff Dev",[dk(2026,11,3)]:"Staff Dev",[dk(2027,1,4)]:"Staff Dev",[dk(2027,2,12)]:"Staff Dev",[dk(2027,3,29)]:"Staff Dev",[dk(2027,4,26)]:"Staff Dev"};
+const BH = {[dk(2025,10,13)]:"Columbus Day",[dk(2025,11,11)]:"Veterans Day",[dk(2026,2,16)]:"Presidents' Day",[dk(2026,6,19)]:"Juneteenth",[dk(2026,7,3)]:"July 4th (obs)",[dk(2026,10,12)]:"Columbus Day",[dk(2026,11,11)]:"Veterans Day",[dk(2027,2,15)]:"Presidents' Day",[dk(2027,5,31)]:"Memorial Day",[dk(2027,6,18)]:"Juneteenth (obs)"};
+const ER = {[dk(2025,12,19)]:"Early Release 11:30",[dk(2026,12,18)]:"Early Release",[dk(2027,5,27)]:"Early Release"};
+
+const TS = {school:{bg:"#FFF3E0",border:"#E86F51",icon:"🏫",label:"School"},kido:{bg:"#F3E8FF",border:"#7C5CBF",icon:"🎨",label:"Kido"},event:{bg:"#E8F5E9",border:"#4CAF50",icon:"⭐",label:"Special"},holiday:{bg:"#FFF9C4",border:"#FBC02D",icon:"🌴",label:"Holiday"}};
+const DS = {bg:"#FCE4EC",border:"#E91E63",icon:"👗"};
+
+function parseCSV(text) {
+  const fl = text.split("\n")[0]||""; const isT = fl.includes("\t");
+  const lines = text.split("\n"); if (lines.length<2) return {};
+  const evts = {};
+  for (let i=1;i<lines.length;i++) {
+    const row = isT?lines[i].split("\t"):pR(lines[i]);
+    if (!row||row.length<6||!row[0]) continue;
+    const [date,title,time,kid,type,desc,action,loc,teacher,dress] = row.map(f=>(f||"").replace(/^"|"$/g,"").trim());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!evts[date]) evts[date]=[];
+    evts[date].push({title:title||"",time:time||"",kid:kid?.toLowerCase()||"both",type:type?.toLowerCase()||"event",desc:desc||"",action:action||"",loc:loc||"",t:teacher||"",dress:dress?.toUpperCase()==="TRUE",fromSheet:true});
+  }
+  return evts;
+}
+function pR(r){if(!r?.trim())return null;const res=[];let c="",q=false;for(let i=0;i<r.length;i++){const ch=r[i];if(ch==='"')q=!q;else if(ch===','&&!q){res.push(c);c="";}else c+=ch;}res.push(c);return res;}
+function gP(k,sp){const r=[];if(sp[k])sp[k].forEach(e=>{if(e.prep)r.push({kid:e.kid,prep:e.prep,title:e.title});else if(e.dress&&e.action)r.push({kid:e.kid,prep:e.action,title:e.title});});return r;}
+
+function Cal() {
+  const today = new Date();
+  const [mo,setMo] = useState(today.getMonth());
+  const [yr,setYr] = useState(today.getFullYear());
+  const [sel,setSel] = useState(null);
+  const [flt,setFlt] = useState("all");
+  const [exp,setExp] = useState(null);
+  const [sq,setSq] = useState("");
+  const [ss,setSs] = useState(false);
+  const [shE,setShE] = useState({});
+  const [shS,setShS] = useState("loading");
+  const [shD,setShD] = useState("");
+
+  useEffect(()=>{(async()=>{
+    try {
+      setShS("loading");setShD("Checking cache...");
+      // Check localStorage cache (6-hour TTL)
+      try{
+        const raw=localStorage.getItem("cal-cache");
+        if(raw){const c=JSON.parse(raw);const age=Date.now()-(c.ts||0);if(age<6*3600000&&c.e){const n=Object.values(c.e).flat().length;if(n>0){setShE(c.e);setShD(`${n} events · cached ${Math.round(age/3600000*10)/10}h ago`);setShS("cached");return;}}}
+      }catch(e){}
+      setShD("Fetching events...");
+      let parsed={},method="",lastErr="";
+
+      // Primary: Apps Script Web App (JSON)
+      if(!method&&WEBAPP_URL){try{
+        const r=await fetch(WEBAPP_URL,{redirect:"follow"});
+        if(r.ok){const j=await r.json();if(j.events?.length>0){for(const e of j.events){if(!e.date)continue;if(!parsed[e.date])parsed[e.date]=[];parsed[e.date].push({title:e.title||"",time:e.time||"",kid:(e.kid||"both").toLowerCase(),type:(e.type||"event").toLowerCase(),desc:e.description||e.desc||"",action:e.action||"",loc:e.location||e.loc||"",t:e.teacher||e.t||"",dress:String(e.dress).toUpperCase()==="TRUE",fromSheet:true});}method="webapp";}else{lastErr="Webapp: no events in response";}}
+        else{lastErr=`Webapp HTTP ${r.status}`;}
+      }catch(e){lastErr=`Webapp: ${e.message}`;}}
+
+      // Fallback: Published Google Sheet CSV
+      if(!method&&SHEET_CSV_URL){try{
+        const r=await fetch(SHEET_CSV_URL);
+        if(r.ok){const txt=await r.text();const p=parseCSV(txt);if(Object.keys(p).length>0){parsed=p;method="csv";}else{lastErr="CSV: 0 events parsed";}}
+        else{lastErr=`CSV HTTP ${r.status}`;}
+      }catch(e){lastErr=`CSV: ${e.message}`;}}
+
+      const cnt=Object.values(parsed).flat().length;
+      if(cnt>0){setShE(parsed);try{localStorage.setItem("cal-cache",JSON.stringify({e:parsed,ts:Date.now()}));}catch(e){}setShD(`${cnt} events via ${method}`);setShS("synced");}
+      else{setShD(lastErr||"No events found");setShS("parse-error");}
+    }catch(err){
+      try{const raw=localStorage.getItem("cal-cache");if(raw){const c=JSON.parse(raw);const n=Object.values(c.e||{}).flat().length;if(n>0){setShE(c.e);setShD(`${n} cached · ${err.message}`);setShS("stale-cache");return;}}}catch(e){}
+      setShD(err.message);setShS("error");
+    }
+  })();},[]);
+
+  const merged=useMemo(()=>{const m={...SE};for(const[k,v]of Object.entries(shE)){if(!m[k])m[k]=[];for(const e of v)if(!m[k].some(x=>x.title===e.title&&x.kid===e.kid))m[k].push(e);}return m;},[shE]);
+
+  function gE(key,dow){
+    const ev=[];
+    if(HOL[key]){ev.push({title:HOL[key],time:"No School",kid:"both",type:"holiday",desc:`${HOL[key]} — no school`});return ev;}
+    if(BH[key])ev.push({title:`🏦 ${BH[key]}`,time:"Banks Closed",kid:"both",type:"holiday",desc:"Banks closed. School IN session."});
+    if(SDV[key])ev.push({title:`📝 ${SDV[key]}`,time:"No School",kid:"evelyn",type:"holiday",desc:"No school — teacher dev. Kido may be open."});
+    if(ER[key])ev.push({title:`⏰ ${ER[key]}`,time:"Early Dismissal",kid:"evelyn",type:"school",desc:"Early release!",action:"⏰ Early pickup!",loc:"RPE"});
+    const eOff=SDV[key]||merged[key]?.some(e=>e.type==="holiday"&&(e.kid==="evelyn"||e.kid==="both"));
+    const wd=dow>=1&&dow<=5;
+    if(wd){
+      if(!eOff){
+        ev.push({title:"Kindergarten",time:"7:30 AM – 2:45 PM",kid:"evelyn",type:"school",desc:"RPE — Ms. Jevnikar",det:"Drop-off 7:10, school 7:30, dismiss 2:45.",loc:"RPE — Room 0009",t:"Ms. Jevnikar"});
+        if(dow===1)ev.push({title:"🏃 Run Club",time:"During PE",kid:"evelyn",type:"school",desc:"Mondays — running shoes!",action:"👟 Running shoes!",loc:"RPE — Track",t:"Coach Warner"});
+        ev.push({title:"Kido Afterschool",time:"2:45 – 6:00 PM",kid:"evelyn",type:"kido",desc:"Innovators with Ms. Rebecca",loc:"Kido — 10625 Bonaventure Dr",t:"Ms. Rebecca Russell"});
+        if(EW[dow]){const e=EW[dow];ev.push({title:e.title,time:"3:00 PM",kid:"evelyn",type:"kido",desc:e.desc,det:e.det,loc:e.loc,t:e.t});}
+      }
+      ev.push({title:"Kido Full Day",time:"7:30 AM – 6:00 PM",kid:"violet",type:"kido",desc:"Experimenters class",loc:"Kido — 10625 Bonaventure Dr",t:"Ms. Chiann / Ms. Dinara / Ms. Caitlin"});
+      if(VW[dow]){const e=VW[dow];ev.push({title:e.title,time:"During day",kid:"violet",type:"kido",desc:e.desc,det:e.det,loc:e.loc,t:e.t});}
+    }
+    if(merged[key])ev.push(...merged[key]);
+    return ev;
+  }
+
+  const dim=new Date(yr,mo+1,0).getDate(),fd=new Date(yr,mo,1).getDay();
+  const tK=dk(today.getFullYear(),today.getMonth()+1,today.getDate());
+  const days=useMemo(()=>{const d=[];for(let i=0;i<fd;i++)d.push(null);for(let i=1;i<=dim;i++)d.push(i);return d;},[mo,yr,dim,fd]);
+  const pM=()=>{mo===0?(setMo(11),setYr(yr-1)):setMo(mo-1);setSel(null);setExp(null);};
+  const nM=()=>{mo===11?(setMo(0),setYr(yr+1)):setMo(mo+1);setSel(null);setExp(null);};
+  const sK=sel?dk(yr,mo+1,sel):null,sD=sel?new Date(yr,mo,sel).getDay():null;
+  const sEv=sel?gE(sK,sD).filter(e=>flt==="all"||e.kid===flt||e.kid==="both"):[];
+  const fD=()=>sel?new Date(yr,mo,sel).toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"}):"";
+  const tEv=useMemo(()=>gE(tK,today.getDay()).filter(e=>flt==="all"||e.kid===flt||e.kid==="both"),[flt,tK,merged]);
+  const tmw=new Date(today);tmw.setDate(tmw.getDate()+1);const tmK=dk(tmw.getFullYear(),tmw.getMonth()+1,tmw.getDate());
+  const prep=useMemo(()=>gP(tmK,merged),[tmK,merged]);
+  const upcoming=useMemo(()=>{const u=[],sn=new Set();for(let i=1;i<28;i++){const d=new Date(today);d.setDate(d.getDate()+i);const k=dk(d.getFullYear(),d.getMonth()+1,d.getDate()),ds=d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});if(merged[k])merged[k].forEach(e=>{if(flt==="all"||e.kid===flt||e.kid==="both"){const id=`${k}-${e.title}`;if(!sn.has(id)){sn.add(id);u.push({...e,dateStr:ds,dateKey:k});}}});if(HOL[k]&&!sn.has(k)){sn.add(k);u.push({title:HOL[k],time:"No School",kid:"both",type:"holiday",desc:"No school",dateStr:ds,dateKey:k});}}return u;},[flt,tK,merged]);
+  const sR=useMemo(()=>{if(!sq||sq.length<2)return[];const q=sq.toLowerCase(),r=[];Object.keys(merged).forEach(k=>{merged[k].forEach(e=>{if(`${e.title} ${e.desc} ${e.action||""} ${e.loc||""}`.toLowerCase().includes(q)){const[y,m,d]=k.split("-").map(Number);r.push({...e,dateKey:k,dateStr:new Date(y,m-1,d).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})});}});});Object.keys(HOL).forEach(k=>{if(HOL[k].toLowerCase().includes(q)){const[y,m,d]=k.split("-").map(Number);r.push({title:HOL[k],type:"holiday",kid:"both",desc:"No school",dateKey:k,dateStr:new Date(y,m-1,d).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})});}});return r.sort((a,b)=>a.dateKey.localeCompare(b.dateKey));},[sq,merged]);
+
+  const ov=()=>{if(exp===null||!sEv[exp])return null;const e=sEv[exp],st=e.dress?DS:(TS[e.type]||TS.event),kid=e.kid==="both"?null:KIDS[e.kid];
+    return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setExp(null)}><div style={{background:"#fff",borderRadius:20,maxWidth:500,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}} onClick={x=>x.stopPropagation()}>
+      <div style={{padding:"16px 20px 12px",background:`linear-gradient(135deg,${st.border}15,${st.border}08)`,borderBottom:`2px solid ${st.border}22`,borderRadius:"20px 20px 0 0"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:6,mb:4,flexWrap:"wrap"}}><span style={{fontSize:24}}>{st.icon}</span>{e.dress&&<span style={{fontSize:9,fontWeight:700,textTransform:"uppercase",color:"#E91E63",background:"#FCE4EC",padding:"2px 8px",borderRadius:6}}>Dress-Up</span>}<span style={{fontSize:9,fontWeight:700,textTransform:"uppercase",color:TS[e.type]?.border,background:TS[e.type]?.bg,padding:"2px 8px",borderRadius:6}}>{TS[e.type]?.label}</span>{kid&&<span style={{fontSize:9,fontWeight:700,background:kid.lightColor,color:kid.color,padding:"2px 8px",borderRadius:6}}>{kid.emoji} {kid.name}</span>}</div><h3 style={{margin:0,fontSize:17,fontWeight:800,color:"#3A2D5F",fontFamily:"'Baloo 2',cursive"}}>{e.title}</h3></div><button onClick={()=>setExp(null)} style={{background:"none",border:"none",fontSize:22,color:"#aaa",cursor:"pointer",padding:"0 0 0 8px"}}>✕</button></div></div>
+      <div style={{padding:"14px 20px"}}>{e.time&&<div style={{display:"flex",alignItems:"center",gap:8,mb:10,padding:"7px 12px",background:"#F8F6FF",borderRadius:10}}>🕐 <span style={{fontSize:14,fontWeight:700,color:"#5A3E91"}}>{e.time}</span></div>}{e.action&&<div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:10,padding:"9px 12px",background:"#FFF3E0",borderRadius:10,border:"1px solid #FFE0B2"}}>📌<div><div style={{fontSize:9,fontWeight:800,color:"#E65100",textTransform:"uppercase"}}>Action</div><span style={{fontSize:13,fontWeight:600,color:"#BF360C"}}>{e.action}</span></div></div>}<p style={{fontSize:13,color:"#444",lineHeight:1.6,margin:"0 0 12px"}}>{e.det||e.desc}</p>{e.loc&&<div style={{fontSize:12,color:"#666",marginBottom:6}}>📍 {e.loc}</div>}{e.t&&<div style={{fontSize:12,color:"#666"}}>👩‍🏫 {e.t}</div>}</div>
+      <div style={{padding:"8px 20px 14px",borderTop:"1px solid #f0ecf8"}}><button onClick={()=>setExp(null)} style={{width:"100%",padding:"9px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${st.border}22,${st.border}11)`,color:st.border,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Close</button></div>
+    </div></div>);};
+
+  const nb={width:36,height:36,borderRadius:"50%",border:"2px solid #E0D8EF",background:"#fff",fontSize:18,color:"#7C5CBF",cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit"};
+
+  return(
+    <div style={{fontFamily:"'Nunito',sans-serif",minHeight:"100vh",background:"linear-gradient(145deg,#FFF8F0 0%,#F5EFFF 50%,#EAF6FF 100%)",padding:16,maxWidth:780,margin:"0 auto"}}>
+      <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet"/>
+      <div style={{textAlign:"center",marginBottom:14}}>
+        <h1 style={{fontFamily:"'Baloo 2',cursive",fontSize:28,margin:0,background:"linear-gradient(135deg,#E86F51,#7C5CBF)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Bowden Family Calendar</h1>
+        <p style={{margin:"2px 0 0",color:"#888",fontSize:12,fontWeight:600}}>🦋 Evelyn · RPE + Kido &nbsp; 🌸 Violet · Kido Experimenters</p>
+        {shS==="synced"&&<p style={{margin:"4px 0 0",fontSize:10,color:"#4CAF50",fontWeight:700}}>🟢 Live — {shD}</p>}
+        {shS==="cached"&&<p style={{margin:"4px 0 0",fontSize:10,color:"#4CAF50",fontWeight:700}}>🟢 {shD}</p>}
+        {shS==="stale-cache"&&<p style={{margin:"4px 0 0",fontSize:10,color:"#FF9800",fontWeight:700}}>🟡 {shD}</p>}
+        {shS==="loading"&&<p style={{margin:"4px 0 0",fontSize:10,color:"#FF9800",fontWeight:700}}>🟡 {shD||"Syncing..."}</p>}
+        {(shS==="parse-error"||shS==="error")&&<p style={{margin:"4px 0 0",fontSize:10,color:"#F44336",fontWeight:700}}>🔴 {shD}</p>}
+      </div>
+
+      <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        {[{k:"all",l:"Everyone",e:"👨‍👩‍👧‍👧"},{k:"evelyn",l:"Evelyn",e:"🦋"},{k:"violet",l:"Violet",e:"🌸"}].map(f=><button key={f.k} onClick={()=>{setFlt(f.k);setExp(null);}} style={{padding:"6px 14px",borderRadius:24,border:flt===f.k?"2px solid #7C5CBF":"2px solid #E0D8EF",background:flt===f.k?"linear-gradient(135deg,#7C5CBF22,#E86F5122)":"#fff",color:flt===f.k?"#5A3E91":"#777",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{f.e} {f.l}</button>)}
+        <button onClick={()=>{setSs(!ss);setSq("");}} style={{padding:"6px 12px",borderRadius:24,border:ss?"2px solid #2196F3":"2px solid #E0D8EF",background:ss?"#E3F2FD":"#fff",color:ss?"#1565C0":"#777",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🔍</button>
+      </div>
+
+      {ss&&<div style={{marginBottom:12}}><input type="text" value={sq} onChange={e=>setSq(e.target.value)} placeholder='Search... (e.g. "picture day")' style={{width:"100%",padding:"10px 14px",borderRadius:12,border:"2px solid #E0D8EF",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+        {sR.length>0&&<div style={{marginTop:6,background:"#fff",borderRadius:12,boxShadow:"0 4px 16px rgba(0,0,0,0.08)",maxHeight:250,overflowY:"auto"}}>{sR.map((r,i)=>{const kid=r.kid==="both"?null:KIDS[r.kid];const st=TS[r.type]||TS.event;return(<div key={i} style={{padding:"8px 12px",borderBottom:"1px solid #f5f0fa",display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:16}}>{r.dress?"👗":st.icon}</span><div style={{flex:1}}><div style={{fontSize:12,fontWeight:700,color:"#3A2D5F"}}>{r.title}</div><div style={{fontSize:10,color:"#888"}}>{r.dateStr}{kid?` · ${kid.emoji} ${kid.name}`:""}</div></div>{r.dress&&<span style={{fontSize:8,background:"#FCE4EC",color:"#E91E63",fontWeight:800,padding:"1px 5px",borderRadius:4}}>OUTFIT</span>}</div>);})}</div>}
+        {sq.length>=2&&sR.length===0&&<div style={{marginTop:6,padding:12,textAlign:"center",color:"#aaa",fontSize:13}}>No results</div>}
+      </div>}
+
+      {!ss&&!sel&&<div style={{background:"#fff",borderRadius:16,padding:"12px 16px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:"4px solid #FF9800"}}>
+        <div style={{fontWeight:800,fontSize:12,color:"#FF9800",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>☀️ Today — {today.toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}</div>
+        {tEv.length===0?<div style={{fontSize:12,color:"#aaa"}}>No events!</div>:<div style={{display:"flex",flexDirection:"column",gap:4}}>{tEv.slice(0,6).map((e,i)=>{const kid=e.kid==="both"?null:KIDS[e.kid];return(<div key={i} style={{display:"flex",alignItems:"center",gap:6,fontSize:12}}><span style={{fontSize:14}}>{e.dress?"👗":(TS[e.type]||TS.event).icon}</span><span style={{fontWeight:700,color:"#3A2D5F"}}>{e.title}</span>{e.time&&<span style={{color:"#999",fontSize:11}}>· {e.time}</span>}{kid&&<span style={{fontSize:9,fontWeight:700,color:kid.color}}>{kid.emoji}</span>}{e.dress&&<span style={{fontSize:8,background:"#FCE4EC",color:"#E91E63",fontWeight:800,padding:"0 4px",borderRadius:3}}>OUTFIT</span>}</div>);})}{tEv.length>6&&<div style={{fontSize:11,color:"#aaa"}}>+{tEv.length-6} more</div>}</div>}
+      </div>}
+
+      {!ss&&!sel&&prep.length>0&&<div style={{background:"#fff",borderRadius:16,padding:"12px 16px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:"4px solid #E91E63"}}>
+        <div style={{fontWeight:800,fontSize:12,color:"#E91E63",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>🔔 Prep for Tomorrow</div>
+        {prep.map((r,i)=>{const kid=r.kid==="both"?null:KIDS[r.kid];return(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:12,marginBottom:4}}>📌<div><span style={{fontWeight:700,color:"#BF360C"}}>{r.prep}</span>{kid&&<span style={{fontSize:10,color:kid.color,fontWeight:600,marginLeft:6}}>{kid.emoji}</span>}</div></div>);})}
+      </div>}
+
+      {!ss&&!sel&&upcoming.length>0&&<div style={{background:"#fff",borderRadius:16,padding:"10px 14px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:"4px solid #4CAF50"}}>
+        <div style={{fontWeight:800,fontSize:12,color:"#4CAF50",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>⭐ Coming Up</div>
+        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4}}>{upcoming.slice(0,10).map((e,i)=>{const kid=e.kid==="both"?null:KIDS[e.kid];const st=TS[e.type]||TS.event;return(<div key={i} style={{minWidth:140,padding:"6px 10px",borderRadius:10,background:e.dress?DS.bg:st.bg,border:`1px solid ${(e.dress?DS.border:st.border)}22`,flexShrink:0}}><div style={{fontSize:10,fontWeight:700,color:"#999"}}>{e.dateStr}</div><div style={{fontSize:12,fontWeight:700,color:"#3A2D5F",marginTop:1}}>{e.title}</div>{kid&&<div style={{fontSize:10,color:kid.color,fontWeight:600,marginTop:2}}>{kid.emoji} {kid.name}</div>}</div>);})}</div>
+      </div>}
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:20,marginBottom:10}}>
+        <button onClick={pM} style={nb}>‹</button>
+        <span style={{fontFamily:"'Baloo 2',cursive",fontSize:22,fontWeight:700,color:"#3A2D5F",minWidth:200,textAlign:"center"}}>{MN[mo]} {yr}</span>
+        <button onClick={nM} style={nb}>›</button>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:2}}>{DN.map(d=><div key={d} style={{textAlign:"center",fontSize:10,fontWeight:800,color:d==="Sun"||d==="Sat"?"#C4A0E8":"#9B8DBF",textTransform:"uppercase",letterSpacing:1,padding:"3px 0"}}>{d}</div>)}</div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>{days.map((day,idx)=>{
+        if(!day)return<div key={`e${idx}`}/>;
+        const key=dk(yr,mo+1,day),dow=new Date(yr,mo,day).getDay(),isT=key===tK,isS=day===sel,isW=dow===0||dow===6;
+        const hH=HOL[key],hSD=SDV[key],hBH=BH[key]&&!HOL[key],hSp=merged[key],hDr=hSp&&merged[key].some(e=>e.dress);
+        const ev=gE(key,dow).filter(e=>flt==="all"||e.kid===flt||e.kid==="both");
+        const dots=[],sn=new Set();
+        ev.forEach(e=>{if(e.type==="holiday"&&!sn.has("h")){dots.push("#FBC02D");sn.add("h");}else if(e.dress&&!sn.has("d")){dots.push("#E91E63");sn.add("d");}else if(e.type==="event"&&!sn.has("v")){dots.push("#4CAF50");sn.add("v");}else if(e.type==="school"&&!sn.has("s")){dots.push("#2196F3");sn.add("s");}else if(e.kid==="evelyn"&&!sn.has("e")){dots.push(KIDS.evelyn.color);sn.add("e");}else if(e.kid==="violet"&&!sn.has("vi")){dots.push(KIDS.violet.color);sn.add("vi");}});
+        return(<button key={day} onClick={()=>{setSel(day===sel?null:day);setExp(null);}} style={{position:"relative",aspectRatio:"1",border:isS?"2.5px solid #7C5CBF":isT?"2px solid #E86F51":hDr?"1.5px dashed #E91E63":"1.5px solid transparent",borderRadius:12,background:isS?"linear-gradient(145deg,#F5EFFF,#FFF3E0)":hH?"#FFFDE7":hSD?"#FFF8E1":hBH?"#F5F5F5":hDr?"#FFF0F3":isW?"#F9F6FF":"#fff",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,boxShadow:isS?"0 4px 14px rgba(124,92,191,0.2)":isT?"0 2px 8px rgba(232,111,81,0.15)":"0 1px 3px rgba(0,0,0,0.04)",padding:2}}>
+          <span style={{fontSize:14,fontWeight:isT?800:600,color:isW?"#B39DDB":isT?"#E86F51":"#3A2D5F"}}>{day}</span>
+          {dots.length>0&&<div style={{display:"flex",gap:2}}>{[...new Set(dots)].slice(0,4).map((c,i)=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:c}}/>)}</div>}
+          {hDr&&<span style={{fontSize:7,position:"absolute",top:1,left:3}}>👗</span>}
+          {hBH&&<span style={{fontSize:7,position:"absolute",top:1,right:3}}>🏦</span>}
+          {hSp&&!hDr&&!hBH&&<span style={{fontSize:7,position:"absolute",top:1,right:3}}>⭐</span>}
+        </button>);
+      })}</div>
+
+      <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:10,flexWrap:"wrap"}}>{[{c:"#E91E63",l:"👗 Dress-Up"},{c:KIDS.evelyn.color,l:"Evelyn"},{c:KIDS.violet.color,l:"Violet"},{c:"#2196F3",l:"School"},{c:"#4CAF50",l:"Special"},{c:"#FBC02D",l:"Holiday"},{c:"#9E9E9E",l:"🏦 Bank"}].map(l=><div key={l.l} style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:"#777",fontWeight:600}}><div style={{width:6,height:6,borderRadius:"50%",background:l.c}}/>{l.l}</div>)}</div>
+
+      {sel&&<div style={{marginTop:14,background:"#fff",borderRadius:16,boxShadow:"0 4px 20px rgba(0,0,0,0.06)",overflow:"hidden"}}>
+        <div style={{padding:"12px 16px",background:"linear-gradient(135deg,#7C5CBF12,#E86F5112)",borderBottom:"1px solid #F0EBF8"}}><h2 style={{margin:0,fontFamily:"'Baloo 2',cursive",fontSize:18,color:"#3A2D5F"}}>{fD()}</h2><p style={{margin:"2px 0 0",fontSize:11,color:"#aaa"}}>Tap event for details</p></div>
+        <div style={{padding:"8px 12px",maxHeight:400,overflowY:"auto"}}>{sEv.length===0?<p style={{textAlign:"center",color:"#aaa",padding:16}}>No events 🌿</p>:sEv.map((e,i)=>{const st=e.dress?DS:(TS[e.type]||TS.event);const kid=e.kid==="both"?null:KIDS[e.kid];const more=e.det||e.action||e.loc||e.t;return(<div key={i} onClick={()=>more&&setExp(i)} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"9px 10px",marginBottom:5,borderRadius:10,background:e.dress?DS.bg:st.bg,borderLeft:`3px solid ${e.dress?DS.border:st.border}`,cursor:more?"pointer":"default"}}><span style={{fontSize:18,lineHeight:1}}>{e.dress?"👗":st.icon}</span><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}><span style={{fontWeight:700,color:"#3A2D5F",fontSize:13}}>{e.title}</span>{kid&&<span style={{fontSize:9,fontWeight:700,background:kid.lightColor,color:kid.color,padding:"1px 6px",borderRadius:6}}>{kid.emoji} {kid.name}</span>}{e.dress&&<span style={{fontSize:8,fontWeight:800,background:"#FCE4EC",color:"#E91E63",padding:"1px 5px",borderRadius:4}}>OUTFIT</span>}</div>{e.time&&<div style={{fontSize:11,color:"#888",fontWeight:600,marginTop:1}}>🕐 {e.time}</div>}<div style={{fontSize:11,color:"#666",marginTop:2}}>{e.desc}</div>{e.action&&<div style={{fontSize:10,color:"#E65100",fontWeight:700,marginTop:3}}>📌 {e.action}</div>}</div>{more&&<span style={{fontSize:14,color:"#C4A0E8",fontWeight:700,alignSelf:"center"}}>›</span>}</div>);})}</div>
+      </div>}
+
+      <div style={{marginTop:14,background:"#fff",borderRadius:14,boxShadow:"0 2px 10px rgba(0,0,0,0.04)",overflow:"hidden"}}>
+        <div style={{padding:"10px 16px",background:"linear-gradient(135deg,#7C5CBF08,#E86F5108)",borderBottom:"1px solid #f5f0fa"}}><strong style={{color:"#5A3E91",fontSize:12}}>Weekly Schedule</strong></div>
+        <div style={{padding:"8px 14px",fontSize:11,color:"#666",lineHeight:1.8}}><div style={{display:"grid",gridTemplateColumns:"56px 1fr 1fr",gap:"2px 10px"}}><span/><span style={{fontWeight:800,color:KIDS.evelyn.color,fontSize:10}}>🦋 EVELYN</span><span style={{fontWeight:800,color:KIDS.violet.color,fontSize:10}}>🌸 VIOLET</span><span style={{fontWeight:700,color:"#5A3E91"}}>Mon</span><span>🏃 Run Club + Makerspace</span><span>K-Math</span><span style={{fontWeight:700,color:"#5A3E91"}}>Tue</span><span>Teamwork Tuesday</span><span>Explorer Day</span><span style={{fontWeight:700,color:"#5A3E91"}}>Wed</span><span>Cooking & Exploration</span><span>K-Math</span><span style={{fontWeight:700,color:"#5A3E91"}}>Thu</span><span>Tinkering Thursday</span><span>Explorer Day</span><span style={{fontWeight:700,color:"#5A3E91"}}>Fri</span><span>Free Choice Friday</span><span>Fun Friday</span></div></div>
+        <div style={{padding:"6px 14px 10px",borderTop:"1px solid #f5f0fa",fontSize:10,color:"#aaa",lineHeight:1.5}}><strong>Evelyn:</strong> RPE 7:30a–2:45p (Ms. Jevnikar) → Kido 2:45–6p (Ms. Rebecca)<br/><strong>Violet:</strong> Kido 7:30a–6p (Ms. Chiann, Ms. Dinara, Ms. Caitlin)<br/><strong>School:</strong> River Place Elementary · 6500 Sitio Del Rio Blvd<br/><strong>Kido:</strong> 10625 Bonaventure Dr · 512-354-2808</div>
+      </div>
+      {ov()}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(Cal));
+</script>
+</body>
+</html>
