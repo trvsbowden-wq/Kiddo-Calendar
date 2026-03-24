@@ -154,7 +154,10 @@ function Cal() {
     }
   })();},[]);
 
-  const merged=useMemo(()=>{const m={...SE};for(const[k,v]of Object.entries(shE)){if(!m[k])m[k]=[];for(const e of v)if(!m[k].some(x=>x.title===e.title&&x.kid===e.kid))m[k].push(e);}return m;},[shE]);
+  // Normalize title for fuzzy dedup — strips emojis, lowercases, removes punctuation
+  const normT=t=>String(t).replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu,'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+  const titleDupe=(a,b)=>{if(a===b)return true;if(a.includes(b)||b.includes(a))return true;const wa=a.split(' '),wb=b.split(' ');const[sh,lo]=wa.length<=wb.length?[wa,wb]:[wb,wa];return sh.filter(w=>w.length>2&&lo.includes(w)).length/sh.length>=0.8;};
+  const merged=useMemo(()=>{const m={...SE};for(const[k,v]of Object.entries(shE)){if(!m[k])m[k]=[];for(const e of v)if(!m[k].some(x=>x.kid===e.kid&&titleDupe(normT(x.title),normT(e.title))))m[k].push(e);}return m;},[shE]);
 
   function gE(key,dow){
     const ev=[];
