@@ -207,11 +207,14 @@ function Cal() {
       <div style={{textAlign:"center",marginBottom:14}}>
         <h1 style={{fontFamily:"'Baloo 2',cursive",fontSize:28,margin:0,background:"linear-gradient(135deg,#E86F51,#7C5CBF)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Bowden Family Calendar</h1>
         <p style={{margin:"2px 0 0",color:"#888",fontSize:12,fontWeight:600}}>🦋 Evelyn · RPE + Kido &nbsp; 🌸 Violet · Kido Experimenters</p>
-        {shS==="synced"&&<p style={{margin:"4px 0 0",fontSize:10,color:"#4CAF50",fontWeight:700}}>🟢 Live — {shD}</p>}
-        {shS==="cached"&&<p style={{margin:"4px 0 0",fontSize:10,color:"#4CAF50",fontWeight:700}}>🟢 {shD}</p>}
-        {shS==="stale-cache"&&<p style={{margin:"4px 0 0",fontSize:10,color:"#FF9800",fontWeight:700}}>🟡 {shD}</p>}
-        {shS==="loading"&&<p style={{margin:"4px 0 0",fontSize:10,color:"#FF9800",fontWeight:700}}>🟡 {shD||"Syncing..."}</p>}
-        {(shS==="parse-error"||shS==="error")&&<p style={{margin:"4px 0 0",fontSize:10,color:"#F44336",fontWeight:700}}>🔴 {shD}</p>}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:4}}>
+          {shS==="synced"&&<span style={{fontSize:10,color:"#4CAF50",fontWeight:700}}>🟢 Live — {shD}</span>}
+          {shS==="cached"&&<span style={{fontSize:10,color:"#4CAF50",fontWeight:700}}>🟢 {shD}</span>}
+          {shS==="stale-cache"&&<span style={{fontSize:10,color:"#FF9800",fontWeight:700}}>🟡 {shD}</span>}
+          {shS==="loading"&&<span style={{fontSize:10,color:"#FF9800",fontWeight:700}}>🟡 {shD||"Syncing..."}</span>}
+          {(shS==="parse-error"||shS==="error")&&<span style={{fontSize:10,color:"#F44336",fontWeight:700}}>🔴 {shD}</span>}
+          <button onClick={()=>{localStorage.removeItem("cal-cache");location.reload();}} style={{fontSize:10,padding:"2px 8px",borderRadius:10,border:"1px solid #E0D8EF",background:"#fff",color:"#9B8DBF",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{shS==="loading"?"⏳":"🔄"}</button>
+        </div>
       </div>
 
       <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:12,flexWrap:"wrap"}}>
