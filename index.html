@@ -163,16 +163,20 @@ function Cal() {
     if(!f.date||!f.title)return;
     setAddSt("saving");setAddMsg("");
     try{
-      const r=await fetch(WEBAPP_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:f.date,title:f.title,time:f.time||"",kid:f.kid||"both",type:f.type||"event",desc:f.desc||"",action:f.action||"",loc:f.loc||"",dress:!!f.dress})});
+      // Use GET with query params to avoid CORS preflight on Apps Script
+      const p=new URLSearchParams({action:"add",date:f.date,title:f.title,time:f.time||"",kid:f.kid||"both",type:f.type||"event",desc:f.desc||"",action_item:f.action||"",loc:f.loc||"",dress:f.dress?"true":"false"});
+      const r=await fetch(`${WEBAPP_URL}?${p.toString()}`,{redirect:"follow"});
       const j=await r.json();
       if(j.ok){
-        setAddSt("ok");setAddMsg("Saved! Refresh to see it.");
-        localStorage.removeItem("cal-cache"); // bust cache so new event loads
+        setAddSt("ok");setAddMsg("Saved!");
+        localStorage.removeItem("cal-cache");
         setTimeout(()=>{setAddSt("idle");setShowAdd(false);location.reload();},1200);
+      } else if(j.error==="duplicate"){
+        setAddSt("err");setAddMsg("This event already exists in the calendar.");
       } else {
-        setAddSt("err");setAddMsg(j.message||j.error||"Save failed");
+        setAddSt("err");setAddMsg(j.error||"Save failed");
       }
-    }catch(e){setAddSt("err");setAddMsg(e.message);}
+    }catch(e){setAddSt("err");setAddMsg("Could not reach server. Check connection.");}
   }
 
   // Normalize title for fuzzy dedup — strips emojis, lowercases, removes punctuation
