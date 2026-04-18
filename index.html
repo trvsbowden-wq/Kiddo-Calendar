@@ -119,6 +119,11 @@ function Cal() {
   const [shE,setShE] = useState({});
   const [shS,setShS] = useState("loading");
   const [shD,setShD] = useState("");
+  const [view,setView] = useState("cal"); // "cal"|"week"|"brief"|"actions"
+  const [showAdd,setShowAdd] = useState(false);
+  const [addF,setAddF] = useState({date:"",title:"",kid:"both",type:"event",desc:"",action:"",loc:"",dress:false});
+  const [addSt,setAddSt] = useState("idle"); // "idle"|"saving"|"ok"|"err"
+  const [addMsg,setAddMsg] = useState("");
 
   useEffect(()=>{(async()=>{
     try {
@@ -153,6 +158,22 @@ function Cal() {
       setShD(err.message);setShS("error");
     }
   })();},[]);
+
+  async function postEvent(f){
+    if(!f.date||!f.title)return;
+    setAddSt("saving");setAddMsg("");
+    try{
+      const r=await fetch(WEBAPP_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:f.date,title:f.title,time:f.time||"",kid:f.kid||"both",type:f.type||"event",desc:f.desc||"",action:f.action||"",loc:f.loc||"",dress:!!f.dress})});
+      const j=await r.json();
+      if(j.ok){
+        setAddSt("ok");setAddMsg("Saved! Refresh to see it.");
+        localStorage.removeItem("cal-cache"); // bust cache so new event loads
+        setTimeout(()=>{setAddSt("idle");setShowAdd(false);location.reload();},1200);
+      } else {
+        setAddSt("err");setAddMsg(j.message||j.error||"Save failed");
+      }
+    }catch(e){setAddSt("err");setAddMsg(e.message);}
+  }
 
   // Normalize title for fuzzy dedup — strips emojis, lowercases, removes punctuation
   const normT=t=>String(t).replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu,'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim();
@@ -203,6 +224,150 @@ function Cal() {
   const upcoming=useMemo(()=>{const u=[],sn=new Set();for(let i=1;i<28;i++){const d=new Date(today);d.setDate(d.getDate()+i);const k=dk(d.getFullYear(),d.getMonth()+1,d.getDate()),ds=d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});if(merged[k])merged[k].forEach(e=>{if(flt==="all"||e.kid===flt||e.kid==="both"){const id=`${k}-${e.title}`;if(!sn.has(id)){sn.add(id);u.push({...e,dateStr:ds,dateKey:k});}}});if(HOL[k]&&!sn.has(k)){sn.add(k);u.push({title:HOL[k],time:"No School",kid:"both",type:"holiday",desc:"No school",dateStr:ds,dateKey:k});}}return u;},[flt,tK,merged]);
   const sR=useMemo(()=>{if(!sq||sq.length<2)return[];const q=sq.toLowerCase(),r=[];Object.keys(merged).forEach(k=>{merged[k].forEach(e=>{if(`${e.title} ${e.desc} ${e.action||""} ${e.loc||""}`.toLowerCase().includes(q)){const[y,m,d]=k.split("-").map(Number);r.push({...e,dateKey:k,dateStr:new Date(y,m-1,d).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})});}});});Object.keys(HOL).forEach(k=>{if(HOL[k].toLowerCase().includes(q)){const[y,m,d]=k.split("-").map(Number);r.push({title:HOL[k],type:"holiday",kid:"both",desc:"No school",dateKey:k,dateStr:new Date(y,m-1,d).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})});}});return r.sort((a,b)=>a.dateKey.localeCompare(b.dateKey));},[sq,merged]);
 
+  // ── WEEK VIEW ───────────────────────────────────────────────────────────
+  const wkView=()=>{
+    const base=sel?new Date(yr,mo,sel):today;
+    const dow=base.getDay();
+    const mon=new Date(base);mon.setDate(base.getDate()-(dow===0?6:dow-1));
+    const wkDays=Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d;});
+    const prevWk=()=>{const d=new Date(base);d.setDate(d.getDate()-7);setSel(d.getDate());setMo(d.getMonth());setYr(d.getFullYear());setExp(null);};
+    const nextWk=()=>{const d=new Date(base);d.setDate(d.getDate()+7);setSel(d.getDate());setMo(d.getMonth());setYr(d.getFullYear());setExp(null);};
+    const wkLabel=`${wkDays[0].toLocaleDateString("en-US",{month:"short",day:"numeric"})} – ${wkDays[6].toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`;
+    return(<div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:10}}>
+        <button onClick={prevWk} style={nb}>‹</button>
+        <span style={{fontFamily:"'Baloo 2',cursive",fontSize:16,fontWeight:700,color:"#3A2D5F"}}>{wkLabel}</span>
+        <button onClick={nextWk} style={nb}>›</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:12}}>
+        {wkDays.map((d,i)=>{
+          const k=dk(d.getFullYear(),d.getMonth()+1,d.getDate());
+          const isT=k===tK,isSel=sel&&k===dk(yr,mo+1,sel)&&mo===d.getMonth()&&yr===d.getFullYear();
+          const hH=HOL[k],hSD=SDV[k],hSp=merged[k],hDr=hSp&&merged[k].some(e=>e.dress),isWk=d.getDay()===0||d.getDay()===6;
+          const wEv=gE(k,d.getDay()).filter(e=>flt==="all"||e.kid===flt||e.kid==="both");
+          const specials=wEv.filter(e=>e.type==="event"||e.dress||(e.type==="school"&&e.title!=="Kindergarten"&&!e.title.includes("Kido")&&!e.title.includes("Run Club")&&!e.title.includes("Makerspace")&&!e.title.includes("Teamwork")&&!e.title.includes("Cooking")&&!e.title.includes("Tinkering")&&!e.title.includes("Free Choice")));
+          return(<button key={i} onClick={()=>{setSel(d.getDate());setMo(d.getMonth());setYr(d.getFullYear());setExp(null);}} style={{border:isSel?"2.5px solid #7C5CBF":isT?"2px solid #E86F51":"1.5px solid transparent",borderRadius:12,background:isSel?"linear-gradient(145deg,#F5EFFF,#FFF3E0)":hH||hSD?"#FFFDE7":hDr?"#FFF0F3":isWk?"#F9F6FF":"#fff",cursor:"pointer",fontFamily:"inherit",padding:"6px 2px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minHeight:70,boxShadow:isSel?"0 4px 14px rgba(124,92,191,0.2)":"0 1px 3px rgba(0,0,0,0.04)"}}>
+            <span style={{fontSize:9,fontWeight:700,color:isWk?"#C4A0E8":"#9B8DBF",textTransform:"uppercase"}}>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]}</span>
+            <span style={{fontSize:16,fontWeight:isT?800:600,color:isWk?"#B39DDB":isT?"#E86F51":"#3A2D5F"}}>{d.getDate()}</span>
+            {hDr&&<span style={{fontSize:10}}>👗</span>}
+            {!hDr&&specials.length>0&&<span style={{fontSize:10}}>⭐</span>}
+            {(hH||hSD)&&<span style={{fontSize:9,color:"#FBC02D",fontWeight:700}}>No School</span>}
+          </button>);
+        })}
+      </div>
+      {/* Selected day events */}
+      <div style={{background:"#fff",borderRadius:16,padding:"12px 16px",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:`4px solid ${isToday?"#FF9800":"#7C5CBF"}`}}>
+        <div style={{fontWeight:800,fontSize:12,color:isToday?"#FF9800":"#7C5CBF",marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>{isToday?"☀️ Today":"📅"} — {activeDate.toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}</div>
+        {activeEv.length===0?<div style={{fontSize:12,color:"#aaa"}}>{(activeDow===0||activeDow===6)?"🌅 Weekend — no school.":"No events!"}</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:240,overflowY:"auto"}}>{activeEv.map((e,i)=>{const kid=e.kid==="both"?null:KIDS[e.kid];const more=e.det||e.action||e.loc||e.t;return(<div key={i} onClick={()=>more&&setExp(i)} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,padding:"4px 6px",borderRadius:8,cursor:more?"pointer":"default"}} onMouseEnter={ev=>{if(more)ev.currentTarget.style.background="#F5EFFF"}} onMouseLeave={ev=>ev.currentTarget.style.background="transparent"}><span style={{fontSize:14}}>{e.dress?"👗":(TS[e.type]||TS.event).icon}</span><span style={{fontWeight:700,color:"#3A2D5F",flex:1}}>{e.title}</span>{e.time&&<span style={{color:"#999",fontSize:11}}>· {e.time}</span>}{kid&&<span style={{fontSize:9,fontWeight:700,color:kid.color}}>{kid.emoji}</span>}{e.dress&&<span style={{fontSize:8,background:"#FCE4EC",color:"#E91E63",fontWeight:800,padding:"0 4px",borderRadius:3}}>OUTFIT</span>}{more&&<span style={{fontSize:12,color:"#C4A0E8",fontWeight:700,marginLeft:2}}>›</span>}</div>);})}</div>}
+      </div>
+    </div>);
+  };
+
+  // ── MORNING BRIEF ────────────────────────────────────────────────────────
+  const briefView=()=>{
+    const bEv=gE(tK,today.getDay());
+    const kidEv=kid=>bEv.filter(e=>e.kid===kid||e.kid==="both").filter(e=>flt==="all"||flt===kid||flt==="all");
+    const specOnly=evs=>evs.filter(e=>e.type==="event"||e.dress||(e.action&&e.action.trim()));
+    const actions7=[];
+    for(let i=0;i<=6;i++){const d=new Date(today);d.setDate(today.getDate()+i);const k=dk(d.getFullYear(),d.getMonth()+1,d.getDate());const dow=d.getDay();const evs=gE(k,dow).filter(e=>flt==="all"||e.kid===flt||e.kid==="both");evs.forEach(e=>{if(e.action||e.dress){const ds=i===0?"Today":i===1?"Tomorrow":d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});actions7.push({...e,dateStr:ds,dateKey:k,daysOut:i});}});}
+    const KidCard=({kidKey})=>{
+      const k=KIDS[kidKey];
+      const evs=kidEv(kidKey);
+      const acts=evs.filter(e=>e.action||e.dress);
+      const specials=evs.filter(e=>e.type==="event"||(e.fromSheet&&e.type!=="kido"&&e.type!=="school"));
+      const isWknd=today.getDay()===0||today.getDay()===6;
+      return(<div style={{flex:1,background:"#fff",borderRadius:16,padding:"14px 14px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)",borderTop:`4px solid ${k.color}`}}>
+        <div style={{fontFamily:"'Baloo 2',cursive",fontSize:18,fontWeight:800,color:k.color,marginBottom:8}}>{k.emoji} {k.name}</div>
+        {isWknd?<div style={{fontSize:12,color:"#aaa"}}>🌅 Weekend</div>:<>
+          {acts.length>0&&<div style={{marginBottom:8}}>{acts.map((e,i)=><div key={i} style={{fontSize:12,fontWeight:700,color:"#BF360C",background:"#FFF3E0",borderRadius:8,padding:"5px 8px",marginBottom:4}}>📌 {e.action||"👗 Dress-up day!"}</div>)}</div>}
+          {specials.length>0&&<div style={{marginBottom:8}}>{specials.map((e,i)=><div key={i} style={{fontSize:12,color:"#3A2D5F",background:(TS[e.type]||TS.event).bg,borderRadius:8,padding:"5px 8px",marginBottom:4}}>{e.dress?"👗":(TS[e.type]||TS.event).icon} {e.title}{e.time&&<span style={{color:"#999"}}> · {e.time}</span>}</div>)}</div>}
+          {acts.length===0&&specials.length===0&&<div style={{fontSize:12,color:"#aaa"}}>✅ Nothing special today</div>}
+        </>}
+      </div>);
+    };
+    return(<div>
+      <div style={{fontFamily:"'Baloo 2',cursive",fontSize:20,fontWeight:800,color:"#3A2D5F",marginBottom:12,textAlign:"center"}}>☀️ {today.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
+      <div style={{display:"flex",gap:10,marginBottom:14}}><KidCard kidKey="evelyn"/><KidCard kidKey="violet"/></div>
+      {actions7.length>0&&<div style={{background:"#fff",borderRadius:16,padding:"12px 16px",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:"4px solid #E91E63"}}>
+        <div style={{fontWeight:800,fontSize:12,color:"#E91E63",marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>🗓️ Action Items — Next 7 Days</div>
+        {actions7.map((e,i)=>{const kid=e.kid==="both"?null:KIDS[e.kid];return(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,marginBottom:6,paddingBottom:6,borderBottom:i<actions7.length-1?"1px solid #f5f0fa":"none"}}>
+          <span style={{fontSize:9,fontWeight:700,color:"#999",minWidth:44,paddingTop:2}}>{e.dateStr}</span>
+          <span style={{fontSize:13}}>{e.dress?"👗":(TS[e.type]||TS.event).icon}</span>
+          <div style={{flex:1}}><div style={{fontWeight:700,color:"#3A2D5F"}}>{e.title}</div><div style={{color:"#E65100",fontWeight:600}}>{e.action||"Dress-up day"}</div></div>
+          {kid&&<span style={{fontSize:10,fontWeight:700,color:kid.color}}>{kid.emoji}</span>}
+        </div>);})}
+      </div>}
+    </div>);
+  };
+
+  // ── ACTIONS ROLL-UP ───────────────────────────────────────────────────────
+  const actionsView=()=>{
+    const items=[];
+    for(let i=0;i<=13;i++){const d=new Date(today);d.setDate(today.getDate()+i);const k=dk(d.getFullYear(),d.getMonth()+1,d.getDate());const evs=gE(k,d.getDay()).filter(e=>flt==="all"||e.kid===flt||e.kid==="both");const specials=evs.filter(e=>e.action||e.dress);if(specials.length){const ds=i===0?"Today":i===1?"Tomorrow":d.toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"});items.push({date:ds,daysOut:i,events:specials});}}
+    return(<div>
+      <div style={{fontWeight:800,fontSize:12,color:"#5A3E91",marginBottom:12,textTransform:"uppercase",letterSpacing:0.5}}>⚡ Action Items — Next 2 Weeks</div>
+      {items.length===0?<div style={{textAlign:"center",color:"#aaa",padding:24,fontSize:13}}>🎉 No action items coming up!</div>
+      :items.map((day,di)=><div key={di} style={{background:"#fff",borderRadius:14,padding:"10px 14px",marginBottom:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+        <div style={{fontWeight:800,fontSize:11,color:day.daysOut===0?"#FF9800":day.daysOut===1?"#E91E63":"#9B8DBF",textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>{day.date}</div>
+        {day.events.map((e,ei)=>{const kid=e.kid==="both"?null:KIDS[e.kid];return(<div key={ei} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,marginBottom:ei<day.events.length-1?6:0}}>
+          <span style={{fontSize:14}}>{e.dress?"👗":(TS[e.type]||TS.event).icon}</span>
+          <div style={{flex:1}}><div style={{fontWeight:700,color:"#3A2D5F"}}>{e.title}</div>{e.action&&<div style={{color:"#E65100",fontWeight:600,marginTop:1}}>📌 {e.action}</div>}{e.dress&&!e.action&&<div style={{color:"#E91E63",fontWeight:600,marginTop:1}}>👗 Dress-up day</div>}</div>
+          {kid&&<span style={{fontSize:10,fontWeight:700,color:kid.color}}>{kid.emoji}</span>}
+        </div>);})}
+      </div>)}
+    </div>);
+  };
+
+  // ── ADD EVENT MODAL ───────────────────────────────────────────────────────
+  const addModal=()=>{
+    if(!showAdd)return null;
+    const today8=dk(today.getFullYear(),today.getMonth()+1,today.getDate());
+    return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowAdd(false)}>
+      <div style={{background:"#fff",borderRadius:20,maxWidth:440,width:"100%",padding:"20px 20px 16px",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <span style={{fontFamily:"'Baloo 2',cursive",fontSize:18,fontWeight:800,color:"#3A2D5F"}}>➕ Add Event</span>
+          <button onClick={()=>setShowAdd(false)} style={{background:"none",border:"none",fontSize:20,color:"#aaa",cursor:"pointer"}}>✕</button>
+        </div>
+        {[
+          {label:"Date",field:"date",type:"date"},
+          {label:"Title",field:"title",type:"text",ph:"e.g. Soccer game"},
+          {label:"Time",field:"time",type:"text",ph:"e.g. 10:00 AM"},
+          {label:"Action / What to bring",field:"action",type:"text",ph:"e.g. Bring shin guards"},
+          {label:"Location",field:"loc",type:"text",ph:"e.g. Lakeway Sports Park"},
+          {label:"Notes",field:"desc",type:"text",ph:"Optional details"},
+        ].map(({label,field,type,ph})=><div key={field} style={{marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#9B8DBF",marginBottom:3,textTransform:"uppercase"}}>{label}</div>
+          <input type={type} value={addF[field]||""} onChange={e=>setAddF(f=>({...f,[field]:e.target.value}))} placeholder={ph||""} min={field==="date"?today8:undefined}
+            style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"1.5px solid #E0D8EF",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+        </div>)}
+        <div style={{display:"flex",gap:10,marginBottom:12}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#9B8DBF",marginBottom:3,textTransform:"uppercase"}}>Kid</div>
+            <select value={addF.kid} onChange={e=>setAddF(f=>({...f,kid:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"1.5px solid #E0D8EF",fontSize:13,fontFamily:"inherit",background:"#fff"}}>
+              <option value="both">👨‍👩‍👧‍👧 Both</option><option value="evelyn">🦋 Evelyn</option><option value="violet">🌸 Violet</option>
+            </select>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#9B8DBF",marginBottom:3,textTransform:"uppercase"}}>Type</div>
+            <select value={addF.type} onChange={e=>setAddF(f=>({...f,type:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"1.5px solid #E0D8EF",fontSize:13,fontFamily:"inherit",background:"#fff"}}>
+              <option value="event">⭐ Special</option><option value="school">🏫 School</option><option value="kido">🎨 Kido</option><option value="holiday">🌴 No School</option>
+            </select>
+          </div>
+        </div>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#3A2D5F",marginBottom:16,cursor:"pointer"}}>
+          <input type="checkbox" checked={!!addF.dress} onChange={e=>setAddF(f=>({...f,dress:e.target.checked}))} style={{width:16,height:16}}/>
+          👗 Dress-up day
+        </label>
+        {addMsg&&<div style={{fontSize:12,fontWeight:600,color:addSt==="ok"?"#4CAF50":"#F44336",textAlign:"center",marginBottom:8,padding:"6px 10px",background:addSt==="ok"?"#E8F5E9":"#FFEBEE",borderRadius:8}}>{addMsg}</div>}
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{setShowAdd(false);setAddSt("idle");setAddMsg("");}} style={{flex:1,padding:"10px",borderRadius:12,border:"1.5px solid #E0D8EF",background:"#fff",color:"#777",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <button onClick={()=>postEvent(addF)} disabled={addSt==="saving"} style={{flex:2,padding:"10px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#7C5CBF,#E86F51)",color:"#fff",fontWeight:800,fontSize:13,cursor:addSt==="saving"?"not-allowed":"pointer",fontFamily:"inherit",opacity:addSt==="saving"?0.7:1}}>{addSt==="saving"?"Saving...":addSt==="ok"?"✅ Saved!":"Save Event"}</button>
+        </div>
+      </div>
+    </div>);
+  };
+
   const ov=()=>{if(exp===null||!activeEv[exp])return null;const e=activeEv[exp],st=e.dress?DS:(TS[e.type]||TS.event),kid=e.kid==="both"?null:KIDS[e.kid];
     return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setExp(null)}><div style={{background:"#fff",borderRadius:20,maxWidth:500,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}} onClick={x=>x.stopPropagation()}>
       <div style={{padding:"16px 20px 12px",background:`linear-gradient(135deg,${st.border}15,${st.border}08)`,borderBottom:`2px solid ${st.border}22`,borderRadius:"20px 20px 0 0"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:6,mb:4,flexWrap:"wrap"}}><span style={{fontSize:24}}>{st.icon}</span>{e.dress&&<span style={{fontSize:9,fontWeight:700,textTransform:"uppercase",color:"#E91E63",background:"#FCE4EC",padding:"2px 8px",borderRadius:6}}>Dress-Up</span>}<span style={{fontSize:9,fontWeight:700,textTransform:"uppercase",color:TS[e.type]?.border,background:TS[e.type]?.bg,padding:"2px 8px",borderRadius:6}}>{TS[e.type]?.label}</span>{kid&&<span style={{fontSize:9,fontWeight:700,background:kid.lightColor,color:kid.color,padding:"2px 8px",borderRadius:6}}>{kid.emoji} {kid.name}</span>}</div><h3 style={{margin:0,fontSize:17,fontWeight:800,color:"#3A2D5F",fontFamily:"'Baloo 2',cursive"}}>{e.title}</h3></div><button onClick={()=>setExp(null)} style={{background:"none",border:"none",fontSize:22,color:"#aaa",cursor:"pointer",padding:"0 0 0 8px"}}>✕</button></div></div>
@@ -228,9 +393,16 @@ function Cal() {
         </div>
       </div>
 
-      <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      {/* Kid filter + search */}
+      <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:8,flexWrap:"wrap"}}>
         {[{k:"all",l:"Everyone",e:"👨‍👩‍👧‍👧"},{k:"evelyn",l:"Evelyn",e:"🦋"},{k:"violet",l:"Violet",e:"🌸"}].map(f=><button key={f.k} onClick={()=>{setFlt(f.k);setExp(null);}} style={{padding:"6px 14px",borderRadius:24,border:flt===f.k?"2px solid #7C5CBF":"2px solid #E0D8EF",background:flt===f.k?"linear-gradient(135deg,#7C5CBF22,#E86F5122)":"#fff",color:flt===f.k?"#5A3E91":"#777",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{f.e} {f.l}</button>)}
         <button onClick={()=>{setSs(!ss);setSq("");}} style={{padding:"6px 12px",borderRadius:24,border:ss?"2px solid #2196F3":"2px solid #E0D8EF",background:ss?"#E3F2FD":"#fff",color:ss?"#1565C0":"#777",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🔍</button>
+      </div>
+
+      {/* View toggle */}
+      <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:12}}>
+        {[{v:"cal",l:"📅 Month"},{v:"week",l:"📆 Week"},{v:"brief",l:"☀️ Brief"},{v:"actions",l:"⚡ Actions"}].map(({v,l})=><button key={v} onClick={()=>{setView(v);setSs(false);setSq("");}} style={{padding:"5px 12px",borderRadius:20,border:view===v?"2px solid #7C5CBF":"2px solid #E0D8EF",background:view===v?"linear-gradient(135deg,#7C5CBF22,#E86F5122)":"#fff",color:view===v?"#5A3E91":"#777",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>)}
+        <button onClick={()=>setShowAdd(true)} style={{padding:"5px 14px",borderRadius:20,border:"2px solid #4CAF50",background:"#E8F5E9",color:"#2E7D32",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>➕</button>
       </div>
 
       {ss&&<div style={{marginBottom:12}}><input type="text" value={sq} onChange={e=>setSq(e.target.value)} placeholder='Search... (e.g. "picture day")' style={{width:"100%",padding:"10px 14px",borderRadius:12,border:"2px solid #E0D8EF",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
@@ -238,32 +410,42 @@ function Cal() {
         {sq.length>=2&&sR.length===0&&<div style={{marginTop:6,padding:12,textAlign:"center",color:"#aaa",fontSize:13}}>No results</div>}
       </div>}
 
-      {!ss&&<div style={{background:"#fff",borderRadius:16,padding:"12px 16px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:`4px solid ${isToday?"#FF9800":"#7C5CBF"}`}}>
+      {/* Week view */}
+      {!ss&&view==="week"&&<div style={{marginBottom:12}}>{wkView()}</div>}
+
+      {/* Morning brief */}
+      {!ss&&view==="brief"&&<div style={{marginBottom:12}}>{briefView()}</div>}
+
+      {/* Actions roll-up */}
+      {!ss&&view==="actions"&&<div style={{marginBottom:12}}>{actionsView()}</div>}
+
+      {/* Calendar view */}
+      {!ss&&view==="cal"&&<div style={{background:"#fff",borderRadius:16,padding:"12px 16px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:`4px solid ${isToday?"#FF9800":"#7C5CBF"}`}}>
         <div style={{fontWeight:800,fontSize:12,color:isToday?"#FF9800":"#7C5CBF",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>{isToday?"☀️ Today":"📅"} — {activeDate.toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}</div>
         {activeEv.length===0
           ? <div style={{fontSize:12,color:"#aaa"}}>{(activeDow===0||activeDow===6)?"🌅 Weekend — no school. Check Coming Up for the week ahead.":"No events!"}</div>
           : <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:260,overflowY:"auto"}}>{activeEv.map((e,i)=>{const kid=e.kid==="both"?null:KIDS[e.kid];const more=e.det||e.action||e.loc||e.t;return(<div key={i} onClick={()=>more&&setExp(i)} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,padding:"4px 6px",borderRadius:8,cursor:more?"pointer":"default",background:"transparent"}} onMouseEnter={ev=>{if(more)ev.currentTarget.style.background="#F5EFFF"}} onMouseLeave={ev=>ev.currentTarget.style.background="transparent"}><span style={{fontSize:14}}>{e.dress?"👗":(TS[e.type]||TS.event).icon}</span><span style={{fontWeight:700,color:"#3A2D5F",flex:1}}>{e.title}</span>{e.time&&<span style={{color:"#999",fontSize:11}}>· {e.time}</span>}{kid&&<span style={{fontSize:9,fontWeight:700,color:kid.color}}>{kid.emoji}</span>}{e.dress&&<span style={{fontSize:8,background:"#FCE4EC",color:"#E91E63",fontWeight:800,padding:"0 4px",borderRadius:3}}>OUTFIT</span>}{more&&<span style={{fontSize:12,color:"#C4A0E8",fontWeight:700,marginLeft:2}}>›</span>}</div>);})}</div>}
       </div>}
 
-      {!ss&&activePrep.length>0&&<div style={{background:"#fff",borderRadius:16,padding:"12px 16px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:"4px solid #E91E63"}}>
+      {!ss&&view==='cal'&&activePrep.length>0&&<div style={{background:"#fff",borderRadius:16,padding:"12px 16px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:"4px solid #E91E63"}}>
         <div style={{fontWeight:800,fontSize:12,color:"#E91E63",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>🔔 Prep for {isToday?"Tomorrow":aTmw.toLocaleDateString("en-US",{weekday:"long"})}</div>
         {activePrep.map((r,i)=>{const kid=r.kid==="both"?null:KIDS[r.kid];return(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:12,marginBottom:4}}>📌<div><span style={{fontWeight:700,color:"#BF360C"}}>{r.prep}</span>{kid&&<span style={{fontSize:10,color:kid.color,fontWeight:600,marginLeft:6}}>{kid.emoji}</span>}</div></div>);})}
       </div>}
 
-      {!ss&&upcoming.length>0&&<div style={{background:"#fff",borderRadius:16,padding:"10px 14px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:"4px solid #4CAF50"}}>
+      {!ss&&view==="cal"&&upcoming.length>0&&<div style={{background:"#fff",borderRadius:16,padding:"10px 14px",marginBottom:12,boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderLeft:"4px solid #4CAF50"}}>
         <div style={{fontWeight:800,fontSize:12,color:"#4CAF50",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>⭐ Coming Up</div>
         <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4}}>{upcoming.slice(0,10).map((e,i)=>{const kid=e.kid==="both"?null:KIDS[e.kid];const st=TS[e.type]||TS.event;return(<div key={i} style={{minWidth:140,padding:"6px 10px",borderRadius:10,background:e.dress?DS.bg:st.bg,border:`1px solid ${(e.dress?DS.border:st.border)}22`,flexShrink:0}}><div style={{fontSize:10,fontWeight:700,color:"#999"}}>{e.dateStr}</div><div style={{fontSize:12,fontWeight:700,color:"#3A2D5F",marginTop:1}}>{e.title}</div>{kid&&<div style={{fontSize:10,color:kid.color,fontWeight:600,marginTop:2}}>{kid.emoji} {kid.name}</div>}</div>);})}</div>
       </div>}
 
-      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:20,marginBottom:10}}>
+      {view==="cal"&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:20,marginBottom:10}}>
         <button onClick={pM} style={nb}>‹</button>
         <span style={{fontFamily:"'Baloo 2',cursive",fontSize:22,fontWeight:700,color:"#3A2D5F",minWidth:200,textAlign:"center"}}>{MN[mo]} {yr}</span>
         <button onClick={nM} style={nb}>›</button>
-      </div>
+      </div>}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:2}}>{DN.map(d=><div key={d} style={{textAlign:"center",fontSize:10,fontWeight:800,color:d==="Sun"||d==="Sat"?"#C4A0E8":"#9B8DBF",textTransform:"uppercase",letterSpacing:1,padding:"3px 0"}}>{d}</div>)}</div>
+      {view==="cal"&&<div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:2}}>{DN.map(d=><div key={d} style={{textAlign:"center",fontSize:10,fontWeight:800,color:d==="Sun"||d==="Sat"?"#C4A0E8":"#9B8DBF",textTransform:"uppercase",letterSpacing:1,padding:"3px 0"}}>{d}</div>)}</div>}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>{days.map((day,idx)=>{
+      {view==="cal"&&<div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>{days.map((day,idx)=>{
         if(!day)return<div key={`e${idx}`}/>;
         const key=dk(yr,mo+1,day),dow=new Date(yr,mo,day).getDay(),isT=key===tK,isS=day===sel,isW=dow===0||dow===6;
         const hH=HOL[key],hSD=SDV[key],hBH=BH[key]&&!HOL[key],hSp=merged[key],hDr=hSp&&merged[key].some(e=>e.dress);
@@ -276,17 +458,18 @@ function Cal() {
           {hBH&&<span style={{fontSize:7,position:"absolute",top:1,right:3}}>🏦</span>}
 
         </button>);
-      })}</div>
+      })}</div>}
 
-      <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:10,flexWrap:"wrap"}}><div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap"}}>{[{bg:"#FFFDE7",l:"No School"},{bg:"#FFF0F3",l:"👗 Dress-Up"}].map(l=><div key={l.l} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#777",fontWeight:600}}><div style={{width:12,height:12,borderRadius:3,background:l.bg,border:"1px solid #eee"}}/>{l.l}</div>)}<div style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:"#777",fontWeight:600}}>⭐ Special</div><div style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:"#777",fontWeight:600}}>🏦 Bank Holiday</div></div></div>
+      {view==="cal"&&<div style={{display:"flex",justifyContent:"center",gap:8,marginTop:10,flexWrap:"wrap"}}><div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap"}}>{[{bg:"#FFFDE7",l:"No School"},{bg:"#FFF0F3",l:"👗 Dress-Up"}].map(l=><div key={l.l} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#777",fontWeight:600}}><div style={{width:12,height:12,borderRadius:3,background:l.bg,border:"1px solid #eee"}}/>{l.l}</div>)}<div style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:"#777",fontWeight:600}}>⭐ Special</div><div style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:"#777",fontWeight:600}}>🏦 Bank Holiday</div></div></div>}
 
 
-      <div style={{marginTop:14,background:"#fff",borderRadius:14,boxShadow:"0 2px 10px rgba(0,0,0,0.04)",overflow:"hidden"}}>
+      {!ss&&view==="cal"&&<div style={{marginTop:14,background:"#fff",borderRadius:14,boxShadow:"0 2px 10px rgba(0,0,0,0.04)",overflow:"hidden"}}>
         <div style={{padding:"10px 16px",background:"linear-gradient(135deg,#7C5CBF08,#E86F5108)",borderBottom:"1px solid #f5f0fa"}}><strong style={{color:"#5A3E91",fontSize:12}}>Weekly Schedule</strong></div>
         <div style={{padding:"8px 14px",fontSize:11,color:"#666",lineHeight:1.8}}><div style={{display:"grid",gridTemplateColumns:"56px 1fr 1fr",gap:"2px 10px"}}><span/><span style={{fontWeight:800,color:KIDS.evelyn.color,fontSize:10}}>🦋 EVELYN</span><span style={{fontWeight:800,color:KIDS.violet.color,fontSize:10}}>🌸 VIOLET</span><span style={{fontWeight:700,color:"#5A3E91"}}>Mon</span><span>🏃 Run Club + Makerspace</span><span>K-Math</span><span style={{fontWeight:700,color:"#5A3E91"}}>Tue</span><span>Teamwork Tuesday</span><span>Explorer Day</span><span style={{fontWeight:700,color:"#5A3E91"}}>Wed</span><span>Cooking & Exploration</span><span>K-Math</span><span style={{fontWeight:700,color:"#5A3E91"}}>Thu</span><span>Tinkering Thursday</span><span>Explorer Day</span><span style={{fontWeight:700,color:"#5A3E91"}}>Fri</span><span>Free Choice Friday</span><span>Fun Friday</span></div></div>
         <div style={{padding:"6px 14px 10px",borderTop:"1px solid #f5f0fa",fontSize:10,color:"#aaa",lineHeight:1.5}}><strong>Evelyn:</strong> RPE 7:30a–2:45p (Ms. Jevnikar) → Kido 2:45–6p (Ms. Rebecca)<br/><strong>Violet:</strong> Kido 7:30a–6p (Ms. Chiann, Ms. Dinara, Ms. Caitlin)<br/><strong>School:</strong> River Place Elementary · 6500 Sitio Del Rio Blvd<br/><strong>Kido:</strong> 10625 Bonaventure Dr · 512-354-2808</div>
-      </div>
+      </div>}
       {ov()}
+      {addModal()}
     </div>
   );
 }
